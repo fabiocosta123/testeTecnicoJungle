@@ -12,10 +12,18 @@ const orm = await MikroORM.init(databaseConfig);
 
 if (command === 'up') {
   const applied = await orm.migrator.up();
-  console.log(applied.length === 0 ? 'schema already up to date' : applied.map((migration) => migration.name).join('\n'));
+  console.log(
+    applied.length === 0
+      ? 'schema already up to date'
+      : applied.map((migration) => migration.name).join('\n'),
+  );
 } else {
   const reverted = await orm.migrator.down();
-  console.log(reverted.length === 0 ? 'nothing to revert' : reverted.map((migration) => migration.name).join('\n'));
+  console.log(
+    reverted.length === 0
+      ? 'nothing to revert'
+      : reverted.map((migration) => migration.name).join('\n'),
+  );
 }
 
 await orm.close(true);

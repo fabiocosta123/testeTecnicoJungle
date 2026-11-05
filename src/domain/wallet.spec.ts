@@ -1,6 +1,15 @@
-import { Money } from './money.js';
-import { InsufficientBalanceError, InvalidWalletOperationError, Wallet } from './wallet.js';
-import { InvalidLedgerEntryError, LedgerDirection, WalletLedgerEntry } from './wallet-ledger-entry.js';
+import { describe, expect, it } from 'bun:test';
+import { InvalidMoneyError, Money } from './money.js';
+import {
+  InsufficientBalanceError,
+  InvalidWalletOperationError,
+  Wallet,
+} from './wallet.js';
+import {
+  InvalidLedgerEntryError,
+  LedgerDirection,
+  WalletLedgerEntry,
+} from './wallet-ledger-entry.js';
 
 const openedAt = new Date('2026-11-04T21:00:00.000Z');
 const later = new Date('2026-11-04T21:05:00.000Z');
@@ -19,7 +28,10 @@ describe('Wallet', () => {
     });
 
     expect(entry).toBeUndefined();
-    expect(wallet.balance.toJSON()).toEqual({ amount: '0.00', currency: 'BRL' });
+    expect(wallet.balance.toJSON()).toEqual({
+      amount: '0.00',
+      currency: 'BRL',
+    });
     expect(wallet.version).toBe(1);
   });
 
@@ -79,7 +91,9 @@ describe('Wallet', () => {
       opening: { transactionId: 'opening-tx', ledgerEntryId: 'opening-entry' },
     });
 
-    expect(() => wallet.debit(brl('80.00'), 'bet-1', 'entry-1', later)).toThrow(InsufficientBalanceError);
+    expect(() => wallet.debit(brl('80.00'), 'bet-1', 'entry-1', later)).toThrow(
+      InsufficientBalanceError,
+    );
     expect(wallet.balance.equals(brl('20.00'))).toBe(true);
     expect(wallet.version).toBe(1);
   });
@@ -94,7 +108,9 @@ describe('Wallet', () => {
     });
     const usd = Money.from({ amount: '1.00', currency: 'USD' });
 
-    expect(() => wallet.credit(usd, 'win-1', 'entry-1', later)).toThrow(Error);
+    expect(() => wallet.credit(usd, 'win-1', 'entry-1', later)).toThrow(
+      InvalidMoneyError,
+    );
   });
 
   it('rejects a ledger line whose arithmetic does not close', () => {
