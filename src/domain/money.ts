@@ -27,7 +27,9 @@ export class Money {
     }
 
     if (!AMOUNT_WITH_TWO_DECIMALS.test(props.amount)) {
-      throw new InvalidMoneyError('amount must be a non-negative decimal with 2 places');
+      throw new InvalidMoneyError(
+        'amount must be a non-negative decimal with 2 places',
+      );
     }
 
     return new Money(new Decimal(props.amount), props.currency);
@@ -92,7 +94,9 @@ export class Money {
 
   private assertSameCurrency(other: Money): void {
     if (this.currency !== other.currency) {
-      throw new InvalidMoneyError(`currency mismatch: ${this.currency} and ${other.currency}`);
+      throw new InvalidMoneyError(
+        `currency mismatch: ${this.currency} and ${other.currency}`,
+      );
     }
   }
 }
