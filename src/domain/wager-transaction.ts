@@ -302,7 +302,8 @@ export class WagerTransaction {
       reference.walletId !== this.walletId ||
       reference.roundId !== this.roundId ||
       reference.money.currency !== this.money.currency ||
-      !reference.money.equals(this.money)
+      !reference.money.equals(this.money) ||
+      reference.externalTransactionId !== this.referenceExternalTransactionId
     ) {
       throw new InvalidTransactionStateError(
         'reference does not match the reversal',

@@ -173,4 +173,65 @@ describe('WagerTransaction', () => {
     expect(transaction.matchesPayload('hash-bet')).toBe(true);
     expect(transaction.matchesPayload('other-hash')).toBe(false);
   });
+
+  it('accepts a refund of the processed bet it names', () => {
+    const original = bet();
+    original.markProcessed({ resultBalance: brl('75.00'), at });
+
+    const refund = WagerTransaction.create({
+      id: 'tx-refund',
+      providerId: 'provider-a',
+      externalTransactionId: 'refund-1',
+      idempotencyKey: 'provider-a:refund-1',
+      payloadHash: 'hash-refund',
+      walletId: 'wallet-1',
+      playerId: 'player-1',
+      roundId: 'round-987',
+      gameId: 'fortune-chimp',
+      kind: WagerTransactionKind.Refund,
+      money: brl('25.00'),
+      referenceExternalTransactionId: 'transaction-123',
+      createdAt: at,
+    });
+
+    expect(() => refund.assertCompatibleReference(original)).not.toThrow();
+  });
+
+  it('rejects a refund that names another bet', () => {
+    const other = WagerTransaction.create({
+      id: 'tx-bet-b',
+      providerId: 'provider-a',
+      externalTransactionId: 'bet-b',
+      idempotencyKey: 'provider-a:bet-b',
+      payloadHash: 'hash-bet-b',
+      walletId: 'wallet-1',
+      playerId: 'player-1',
+      roundId: 'round-987',
+      gameId: 'fortune-chimp',
+      kind: WagerTransactionKind.Bet,
+      money: brl('25.00'),
+      createdAt: at,
+    });
+    other.markProcessed({ resultBalance: brl('75.00'), at });
+
+    const refund = WagerTransaction.create({
+      id: 'tx-refund',
+      providerId: 'provider-a',
+      externalTransactionId: 'refund-1',
+      idempotencyKey: 'provider-a:refund-1',
+      payloadHash: 'hash-refund',
+      walletId: 'wallet-1',
+      playerId: 'player-1',
+      roundId: 'round-987',
+      gameId: 'fortune-chimp',
+      kind: WagerTransactionKind.Refund,
+      money: brl('25.00'),
+      referenceExternalTransactionId: 'transaction-123',
+      createdAt: at,
+    });
+
+    expect(() => refund.assertCompatibleReference(other)).toThrow(
+      InvalidTransactionStateError,
+    );
+  });
 });
