@@ -110,7 +110,9 @@ describe('WagerTransaction', () => {
     });
 
     expect(loss.affectsBalance()).toBe(false);
-    expect(() => loss.ledgerDirectionFor()).toThrow(InvalidTransactionStateError);
+    expect(() => loss.ledgerDirectionFor()).toThrow(
+      InvalidTransactionStateError,
+    );
   });
 
   it('credits a refund and debits a rollback of a win', () => {
