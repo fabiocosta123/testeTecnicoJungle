@@ -3,6 +3,7 @@ import { Money } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
 import { LedgerDirection } from '../domain/wallet-ledger-entry.js';
 import {
+  WagerTransaction,
   WagerTransactionKind,
   WagerTransactionStatus,
 } from '../domain/wager-transaction.js';
@@ -77,6 +78,24 @@ class MemoryWagerStore implements WagerStore {
   ): Promise<T> {
     return work({
       findByIdempotencyKey: async (key) => this.byKey.get(key),
+      findByExternalId: async (providerId, externalTransactionId) =>
+        this.find(
+          (transaction) =>
+            transaction.providerId === providerId &&
+            transaction.externalTransactionId === externalTransactionId,
+        ),
+      findActiveReversal: async (providerId, referenceExternalTransactionId) =>
+        this.find(
+          (transaction) =>
+            transaction.providerId === providerId &&
+            transaction.referenceExternalTransactionId ===
+              referenceExternalTransactionId &&
+            (transaction.kind === WagerTransactionKind.Refund ||
+              transaction.kind === WagerTransactionKind.Rollback) &&
+            (transaction.status === WagerTransactionStatus.Pending ||
+              transaction.status === WagerTransactionStatus.PendingReference ||
+              transaction.status === WagerTransactionStatus.Processed),
+        ) !== undefined,
       lockWallet: async (id) => (id === walletId ? this.wallet : undefined),
       save: async (saved) => {
         this.byKey.set(saved.transaction.idempotencyKey, saved.transaction);
@@ -84,6 +103,17 @@ class MemoryWagerStore implements WagerStore {
         this.saved.push(saved);
       },
     });
+  }
+
+  private find(
+    matches: (transaction: WagerTransaction) => boolean,
+  ): WagerTransaction | undefined {
+    for (const transaction of this.byKey.values()) {
+      if (matches(transaction)) {
+        return transaction;
+      }
+    }
+    return undefined;
   }
 }
 
