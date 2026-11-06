@@ -170,7 +170,9 @@ export class WagerTransactionPendingReference extends IntegrationEvent<WagerTran
   readonly eventType = 'WagerTransactionPendingReference';
   readonly version = 1;
 
-  constructor(props: IntegrationEventProps<WagerTransactionPendingReferenceData>) {
+  constructor(
+    props: IntegrationEventProps<WagerTransactionPendingReferenceData>,
+  ) {
     super(props);
   }
 }

@@ -19,9 +19,12 @@
     "test:watch": "bun test --watch",
     "test:cov": "bun test --coverage",
     "db:migrate": "bun src/database/cli.ts up",
-    "db:migrate:down": "bun src/database/cli.ts down"
+    "db:migrate:down": "bun src/database/cli.ts down",
+    "worker": "bun src/wagering/sqs-worker.ts",
+    "outbox": "bun src/wagering/outbox-worker.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-sqs": "^3.1163.0",
     "@mikro-orm/core": "^7.2.7",
     "@mikro-orm/migrations": "7.2.7",
     "@mikro-orm/nestjs": "^7.1.0",

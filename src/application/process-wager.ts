@@ -1,6 +1,9 @@
 import { createHash } from 'node:crypto';
 import { Money } from '../domain/money.js';
-import { LedgerDirection, WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
+import {
+  LedgerDirection,
+  WalletLedgerEntry,
+} from '../domain/wallet-ledger-entry.js';
 import {
   FailureCode,
   InvalidTransactionStateError,
@@ -30,6 +33,20 @@ export class WagerNotFoundError extends Error {
     super('wallet was not found');
     this.name = 'WalletNotFound';
   }
+}
+
+export class InboxConflictError extends Error {
+  constructor() {
+    super('inbox message was reused with a different payload');
+    this.name = 'InboxConflictError';
+  }
+}
+
+export interface InboxReceipt {
+  consumerName: string;
+  messageId: string;
+  payloadHash: string;
+  receivedAt: Date;
 }
 
 export interface ProcessWagerCommand {
@@ -71,6 +88,7 @@ export interface WagerTx {
     providerId: string,
     referenceExternalTransactionId: string,
   ): Promise<boolean>;
+  markInbox(receipt: InboxReceipt): Promise<'recorded' | 'duplicate'>;
   lockWallet(walletId: string): Promise<Wallet | undefined>;
   save(saved: SavedWager): Promise<void>;
 }
@@ -85,7 +103,10 @@ export class ProcessWager {
     private readonly ids: IdSource,
   ) {}
 
-  async execute(command: ProcessWagerCommand): Promise<WagerResult> {
+  async execute(
+    command: ProcessWagerCommand,
+    inbox?: InboxReceipt,
+  ): Promise<WagerResult> {
     const payloadHash = hashWager(command);
 
     return this.store.transact(command.walletId, async (tx) => {
@@ -103,6 +124,9 @@ export class ProcessWager {
         );
       }
 
+      // a inbox entra no mesmo commit da aposta: reentrega não debita de novo
+      const inboxState = inbox ? await tx.markInbox(inbox) : 'recorded';
+
       const existing = await tx.findByIdempotencyKey(command.idempotencyKey);
       if (existing) {
         if (!existing.matchesPayload(payloadHash)) {
@@ -116,6 +140,10 @@ export class ProcessWager {
           idempotentReplay: true,
           failureCode: existing.failureCode,
         };
+      }
+
+      if (inboxState === 'duplicate') {
+        throw new InvalidTransactionStateError('inbox entry has no wager');
       }
 
       const transaction = WagerTransaction.create({
