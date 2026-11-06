@@ -323,6 +323,7 @@ export class WagerTransaction {
       this.kind === WagerTransactionKind.Opening ||
       this.kind === WagerTransactionKind.Refund
     ) {
+      // observação: refund credita sem olhar a referência; a checagem fica no assertCompatibleReference
       return LedgerDirection.Credit;
     }
     if (this.kind === WagerTransactionKind.Loss) {
