@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'bun:test';
 import { Money } from '../domain/money.js';
 import { LedgerDirection } from '../domain/wallet-ledger-entry.js';
-import { WagerTransactionKind, WagerTransactionStatus } from '../domain/wager-transaction.js';
+import {
+  WagerTransactionKind,
+  WagerTransactionStatus,
+} from '../domain/wager-transaction.js';
 import {
   IdSource,
   OpenWallet,
