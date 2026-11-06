@@ -61,6 +61,7 @@ describe('OpenWallet', () => {
         '0192f291-27dd-7d3f-8071-5f8685deef38',
         '0192f291-27dd-7d3f-8071-5f8685deef39',
         '0192f291-27dd-7d3f-8071-5f8685deef3a',
+        '0192f291-27dd-7d3f-8071-5f8685deef3b',
       ),
     );
 
@@ -81,8 +82,10 @@ describe('OpenWallet', () => {
     expect(saved.entry?.balanceBefore.equals(brl('0.00'))).toBe(true);
     expect(saved.entry?.balanceAfter.equals(brl('1000.00'))).toBe(true);
     expect(saved.entry?.transactionId).toBe(saved.opening?.id);
-    expect(saved.event.eventType).toBe('wallet.opened');
-    expect(saved.event.payload.openingTransactionId).toBe(saved.opening?.id);
+    expect(saved.events.map((event) => event.eventType)).toEqual([
+  'WagerTransactionProcessed',
+  'WalletBalanceChanged',
+]);
   });
 
   it('opens a zero balance without a ledger line', async () => {
@@ -102,10 +105,11 @@ describe('OpenWallet', () => {
     });
 
     expect(wallet.balance.equals(brl('0.00'))).toBe(true);
+    expect(store.saved[0].events).toEqual([]);
     expect(wallet.version).toBe(1);
     expect(store.saved[0].opening).toBeUndefined();
     expect(store.saved[0].entry).toBeUndefined();
-    expect(store.saved[0].event.payload.openingTransactionId).toBeUndefined();
+    
   });
 
   it('rejects a second wallet for the same player and currency', async () => {
@@ -124,7 +128,7 @@ describe('OpenWallet', () => {
       ),
     ).execute(command);
 
-    expect(
+    await expect(
       new OpenWallet(
         store,
         ids(
