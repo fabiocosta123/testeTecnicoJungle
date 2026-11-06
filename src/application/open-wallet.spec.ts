@@ -83,9 +83,9 @@ describe('OpenWallet', () => {
     expect(saved.entry?.balanceAfter.equals(brl('1000.00'))).toBe(true);
     expect(saved.entry?.transactionId).toBe(saved.opening?.id);
     expect(saved.events.map((event) => event.eventType)).toEqual([
-  'WagerTransactionProcessed',
-  'WalletBalanceChanged',
-]);
+      'WagerTransactionProcessed',
+      'WalletBalanceChanged',
+    ]);
   });
 
   it('opens a zero balance without a ledger line', async () => {
@@ -109,7 +109,6 @@ describe('OpenWallet', () => {
     expect(wallet.version).toBe(1);
     expect(store.saved[0].opening).toBeUndefined();
     expect(store.saved[0].entry).toBeUndefined();
-    
   });
 
   it('rejects a second wallet for the same player and currency', async () => {
