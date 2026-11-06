@@ -10,6 +10,7 @@ import {
 import { IdSource } from './open-wallet.js';
 import {
   IdempotencyConflictError,
+  InboxConflictError,
   ProcessWager,
   ProcessWagerCommand,
   SavedWager,
@@ -71,6 +72,7 @@ class MemoryWagerStore implements WagerStore {
   wallet?: Wallet;
   readonly saved: SavedWager[] = [];
   private readonly byKey = new Map<string, SavedWager['transaction']>();
+  private readonly inbox = new Map<string, string>();
 
   async transact<T>(
     walletId: string,
@@ -96,6 +98,18 @@ class MemoryWagerStore implements WagerStore {
               transaction.status === WagerTransactionStatus.PendingReference ||
               transaction.status === WagerTransactionStatus.Processed),
         ) !== undefined,
+      markInbox: async (receipt) => {
+        const key = `${receipt.consumerName}\0${receipt.messageId}`;
+        const previous = this.inbox.get(key);
+        if (previous === undefined) {
+          this.inbox.set(key, receipt.payloadHash);
+          return 'recorded';
+        }
+        if (previous !== receipt.payloadHash) {
+          throw new InboxConflictError();
+        }
+        return 'duplicate';
+      },
       lockWallet: async (id) => (id === walletId ? this.wallet : undefined),
       save: async (saved) => {
         this.byKey.set(saved.transaction.idempotencyKey, saved.transaction);
