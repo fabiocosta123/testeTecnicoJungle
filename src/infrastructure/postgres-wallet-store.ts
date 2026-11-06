@@ -9,7 +9,7 @@ import {
 
 @Injectable()
 export class PostgresWalletStore implements WalletStore {
-  constructor(private readonly em: EntityManager) {}
+  constructor(private readonly em: EntityManager) { }
 
   async saveOpening(opened: WalletOpened): Promise<void> {
     if (Boolean(opened.opening) !== Boolean(opened.entry)) {
@@ -100,20 +100,37 @@ export class PostgresWalletStore implements WalletStore {
           );
         }
 
-        await em.execute(
-          `insert into outbox_messages (
-                        id, aggregate_id, event_type, payload, occurred_at, attempts, next_attempt_at
-                    ) values (?, ?, ?, ?::jsonb, ?, 0, ?)`,
-          [
-            opened.event.id,
-            opened.event.walletId,
-            opened.event.eventType,
-            JSON.stringify(opened.event.payload),
-            opened.event.occurredAt,
-            opened.event.occurredAt,
-          ],
-          'run',
-        );
+        // await em.execute(
+        //   `insert into outbox_messages (
+        //                 id, aggregate_id, event_type, payload, occurred_at, attempts, next_attempt_at
+        //             ) values (?, ?, ?, ?::jsonb, ?, 0, ?)`,
+        //   [
+        //     opened.event.id,
+        //     opened.event.walletId,
+        //     opened.event.eventType,
+        //     JSON.stringify(opened.event.payload),
+        //     opened.event.occurredAt,
+        //     opened.event.occurredAt,
+        //   ],
+        //   'run',
+        // );
+
+        for (const event of opened.events) {
+          await em.execute(
+            `insert into outbox_messages (
+      id, aggregate_id, event_type, payload, occurred_at, attempts, next_attempt_at
+    ) values (?, ?, ?, ?::jsonb, ?, 0, ?)`,
+            [
+              event.eventId,
+              event.aggregateId,
+              event.eventType,
+              JSON.stringify(event.toJSON()),
+              event.occurredAt,
+              event.occurredAt,
+            ],
+            'run',
+          );
+        }
       });
     } catch (error) {
       if (isSamePlayerAndCurrency(error)) {

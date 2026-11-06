@@ -59,7 +59,7 @@ describe('PostgresWalletStore', () => {
     expect(rows[0].balance_amount).toBe('1000.00');
     expect(rows[0].version).toBe(1);
     expect(ledger[0].total).toBe('1');
-    expect(events[0].total).toBe('1');
+    expect(events[0].total).toBe('2');
   });
 
   it('rejects the second wallet for the same player and currency', async () => {
@@ -72,7 +72,7 @@ describe('PostgresWalletStore', () => {
       openedAt: at,
     });
 
-    expect(
+    await expect(
       new OpenWallet(new PostgresWalletStore(em.fork()), {
         next: () => randomUUID(),
       }).execute({

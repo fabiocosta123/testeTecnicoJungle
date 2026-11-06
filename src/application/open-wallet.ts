@@ -3,6 +3,11 @@ import { Money } from '../domain/money.js';
 import { Wallet } from '../domain/wallet.js';
 import { WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
 import { WagerTransaction } from '../domain/wager-transaction.js';
+import {
+  IntegrationEvent,
+  WalletBalanceChanged,
+  WagerTransactionProcessed,
+} from '../domain/integration-event.js';
 
 export class WalletAlreadyExistsError extends Error {
   constructor() {
@@ -25,18 +30,7 @@ export interface WalletOpened {
   wallet: Wallet;
   opening?: WagerTransaction;
   entry?: WalletLedgerEntry;
-  event: {
-    id: string;
-    walletId: string;
-    eventType: 'wallet.opened';
-    payload: {
-      playerId: string;
-      balance: { amount: string; currency: string };
-      version: number;
-      openingTransactionId?: string;
-    };
-    occurredAt: Date;
-  };
+  events: IntegrationEvent<unknown>[];
 }
 
 export interface WalletStore {
@@ -68,24 +62,32 @@ export class OpenWallet {
         : undefined,
     });
 
-    const balance = opened.wallet.balance.toJSON();
+    //const balance = opened.wallet.balance.toJSON();
 
     await this.store.saveOpening({
       wallet: opened.wallet,
       opening: opening?.transaction,
       entry: opened.entry,
-      event: {
-        id: this.ids.next(),
-        walletId,
-        eventType: 'wallet.opened',
-        payload: {
-          playerId: command.playerId,
-          balance,
-          version: opened.wallet.version,
-          openingTransactionId: opening?.transaction.id,
-        },
-        occurredAt: command.openedAt,
-      },
+      events:
+        opening && opened.entry
+          ? [
+              WagerTransactionProcessed.create({
+                eventId: this.ids.next(),
+                walletId,
+                correlationId: opening.transaction.id,
+                occurredAt: command.openedAt,
+                transactionId: opening.transaction.id,
+                playerId: command.playerId,
+                kind: opening.transaction.kind,
+                money: opening.transaction.money.toJSON(),
+              }),
+              WalletBalanceChanged.from(opened.wallet, opened.entry, {
+                eventId: this.ids.next(),
+                correlationId: opening.transaction.id,
+                occurredAt: command.openedAt,
+              }),
+            ]
+          : [],
     });
 
     return opened.wallet;
