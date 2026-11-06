@@ -4,6 +4,8 @@ import {
   ConflictException,
   Controller,
   HttpCode,
+  NotFoundException,
+  Param,
   Post,
 } from '@nestjs/common';
 
@@ -13,12 +15,18 @@ import {
   OpenWallet,
   WalletAlreadyExistsError,
 } from '../application/open-wallet.js';
+import {
+  ReconcileWallet,
+  WalletNotFoundError,
+} from '../application/reconcile-wallet.js'
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Controller('wallets')
 export class WalletController {
-  constructor(private readonly openWallet: OpenWallet) {}
+  constructor(private readonly openWallet: OpenWallet,
+    private readonly reconcileWallet: ReconcileWallet,
+  ) { }
 
   @Post()
   @HttpCode(201)
@@ -59,6 +67,30 @@ export class WalletController {
         error instanceof InvalidWalletOperationError
       ) {
         throw new BadRequestException(error.message);
+      }
+
+      throw error;
+    }
+  }
+  @Post(':walletId/reconciliation')
+  async reconcile(@Param('walletId') walletId: string) {
+    if (!walletId || !uuid.test(walletId)) {
+      throw new BadRequestException('walletId must be a uuid');
+    }
+
+    try {
+      const report = await this.reconcileWallet.execute(walletId);
+      return {
+        walletId: report.walletId,
+        storedBalance: report.storedBalance.toJSON(),
+        calculatedBalance: report.calculatedBalance.toJSON(),
+        difference: report.difference.toJSON(),
+        consistent: report.consistent,
+        checkedEntries: report.checkedEntries,
+      };
+    } catch (error) {
+      if (error instanceof WalletNotFoundError) {
+        throw new NotFoundException(error.message);
       }
 
       throw error;
