@@ -1,44 +1,44 @@
-import { MoneyProps } from "./money.js";
+import { MoneyProps } from './money.js';
 import { Wallet } from './wallet.js';
-import { LedgerDirection, WalletLedgerEntry } from "./wallet-ledger-entry.js";
+import { LedgerDirection, WalletLedgerEntry } from './wallet-ledger-entry.js';
 
 export interface EventContext {
-    eventId: string;
-    correlationId: string;
-    causationId?: string;
-    occurredAt: Date;
+  eventId: string;
+  correlationId: string;
+  causationId?: string;
+  occurredAt: Date;
 }
 
 export interface IntegrationEventProps<T> {
-    eventId: string;
-    aggregateId: string;
-    correlationId: string;
-    causationId?: string;
-    occurredAt: Date;
-    data: T;
+  eventId: string;
+  aggregateId: string;
+  correlationId: string;
+  causationId?: string;
+  occurredAt: Date;
+  data: T;
 }
 
 export abstract class IntegrationEvent<T> {
-    abstract readonly eventType: string;
-    abstract readonly version: number;
+  abstract readonly eventType: string;
+  abstract readonly version: number;
 
-    readonly eventId: string;
-    readonly aggregateId: string;
-    readonly correlationId: string;
-    readonly causationId?: string;
-    readonly occurredAt: Date;
-    readonly data: Readonly<T>;
+  readonly eventId: string;
+  readonly aggregateId: string;
+  readonly correlationId: string;
+  readonly causationId?: string;
+  readonly occurredAt: Date;
+  readonly data: Readonly<T>;
 
-    protected constructor(props: IntegrationEventProps<T>) {
-        this.eventId = props.eventId;
-        this.aggregateId = props.aggregateId;
-        this.correlationId = props.correlationId;
-        this.causationId = props.causationId;
-        this.occurredAt = props.occurredAt;
-        this.data = props.data;
-    }
+  protected constructor(props: IntegrationEventProps<T>) {
+    this.eventId = props.eventId;
+    this.aggregateId = props.aggregateId;
+    this.correlationId = props.correlationId;
+    this.causationId = props.causationId;
+    this.occurredAt = props.occurredAt;
+    this.data = props.data;
+  }
 
-    toJSON() {
+  toJSON() {
     return {
       eventId: this.eventId,
       eventType: this.eventType,
@@ -120,6 +120,42 @@ export class WalletBalanceChanged extends IntegrationEvent<WalletBalanceChangedD
       },
     });
   }
-
 }
 
+export interface WagerTransactionRejectedData {
+  transactionId: string;
+  walletId: string;
+  playerId: string;
+  kind: string;
+  failureCode: string;
+}
+
+export class WagerTransactionRejected extends IntegrationEvent<WagerTransactionRejectedData> {
+  readonly eventType: string = 'WagerTransactionRejected';
+  readonly version = 1;
+
+  static create(input: {
+    eventId: string;
+    walletId: string;
+    correlationId: string;
+    occurredAt: Date;
+    transactionId: string;
+    playerId: string;
+    kind: string;
+    failureCode: string;
+  }): WagerTransactionRejected {
+    return new WagerTransactionRejected({
+      eventId: input.eventId,
+      aggregateId: input.walletId,
+      correlationId: input.correlationId,
+      occurredAt: input.occurredAt,
+      data: {
+        transactionId: input.transactionId,
+        walletId: input.walletId,
+        playerId: input.playerId,
+        kind: input.kind,
+        failureCode: input.failureCode,
+      },
+    });
+  }
+}
