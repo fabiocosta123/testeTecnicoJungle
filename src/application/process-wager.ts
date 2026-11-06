@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Money } from '../domain/money.js';
-import { WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
+import { LedgerDirection, WalletLedgerEntry } from '../domain/wallet-ledger-entry.js';
 import {
   FailureCode,
   InvalidTransactionStateError,
@@ -11,6 +11,7 @@ import {
 import {
   IntegrationEvent,
   WalletBalanceChanged,
+  WagerTransactionPendingReference,
   WagerTransactionProcessed,
   WagerTransactionRejected,
 } from '../domain/integration-event.js';
@@ -40,6 +41,7 @@ export interface ProcessWagerCommand {
   roundId: string;
   gameId: string;
   kind: WagerTransactionKind;
+  referenceExternalTransactionId?: string;
   money: Money;
   at: Date;
 }
@@ -61,6 +63,14 @@ export interface SavedWager {
 
 export interface WagerTx {
   findByIdempotencyKey(key: string): Promise<WagerTransaction | undefined>;
+  findByExternalId(
+    providerId: string,
+    externalTransactionId: string,
+  ): Promise<WagerTransaction | undefined>;
+  findActiveReversal(
+    providerId: string,
+    referenceExternalTransactionId: string,
+  ): Promise<boolean>;
   lockWallet(walletId: string): Promise<Wallet | undefined>;
   save(saved: SavedWager): Promise<void>;
 }
@@ -76,10 +86,6 @@ export class ProcessWager {
   ) {}
 
   async execute(command: ProcessWagerCommand): Promise<WagerResult> {
-    if (command.kind !== WagerTransactionKind.Bet) {
-      throw new InvalidTransactionStateError('only a bet is processed');
-    }
-
     const payloadHash = hashWager(command);
 
     return this.store.transact(command.walletId, async (tx) => {
@@ -124,24 +130,34 @@ export class ProcessWager {
         gameId: command.gameId,
         kind: command.kind,
         money: command.money,
+        referenceExternalTransactionId: command.referenceExternalTransactionId,
         createdAt: command.at,
       });
 
-      if (wallet.balance.isLessThan(command.money)) {
-        transaction.reject('INSUFFICIENT_BALANCE', command.at);
+      const reference = command.referenceExternalTransactionId
+        ? await tx.findByExternalId(
+            command.providerId,
+            command.referenceExternalTransactionId,
+          )
+        : undefined;
+
+      if (transaction.requiresReference() && !reference) {
+        transaction.markPendingReference();
         await tx.save({
           transaction,
           wallet,
           events: [
-            WagerTransactionRejected.create({
+            new WagerTransactionPendingReference({
               eventId: this.ids.next(),
-              walletId: wallet.id,
+              aggregateId: wallet.id,
               correlationId: transaction.id,
               occurredAt: command.at,
-              transactionId: transaction.id,
-              playerId: command.playerId,
-              kind: transaction.kind,
-              failureCode: 'INSUFFICIENT_BALANCE',
+              data: {
+                transactionId: transaction.id,
+                walletId: wallet.id,
+                referenceExternalTransactionId:
+                  command.referenceExternalTransactionId ?? '',
+              },
             }),
           ],
         });
@@ -151,21 +167,109 @@ export class ProcessWager {
           status: transaction.status,
           balance: wallet.balance,
           idempotentReplay: false,
-          failureCode: transaction.failureCode,
         };
       }
 
-      const entry = wallet.debit(
-        command.money,
-        transaction.id,
-        this.ids.next(),
-        command.at,
-      );
+      if (
+        transaction.requiresReference() &&
+        (await tx.findActiveReversal(
+          command.providerId,
+          command.referenceExternalTransactionId ?? '',
+        ))
+      ) {
+        return this.reject(
+          tx,
+          transaction,
+          wallet,
+          'REFERENCE_ALREADY_REVERSED',
+          command,
+        );
+      }
+
+      if (reference) {
+        try {
+          transaction.assertCompatibleReference(reference);
+        } catch (error) {
+          // referência que não serve vira rejeição gravada; outro erro desfaz a transação
+          if (error instanceof InvalidTransactionStateError) {
+            return this.reject(
+              tx,
+              transaction,
+              wallet,
+              'INVALID_REFERENCE',
+              command,
+            );
+          }
+          throw error;
+        }
+      }
+
+      if (transaction.kind === WagerTransactionKind.Loss) {
+        transaction.markProcessed({
+          resultBalance: wallet.balance,
+          at: command.at,
+        });
+        await tx.save({
+          transaction,
+          wallet,
+          events: [
+            WagerTransactionProcessed.create({
+              eventId: this.ids.next(),
+              walletId: wallet.id,
+              correlationId: transaction.id,
+              occurredAt: command.at,
+              transactionId: transaction.id,
+              playerId: command.playerId,
+              kind: transaction.kind,
+              money: command.money.toJSON(),
+            }),
+          ],
+        });
+
+        return {
+          transactionId: transaction.id,
+          status: transaction.status,
+          balance: wallet.balance,
+          idempotentReplay: false,
+        };
+      }
+
+      const direction = transaction.ledgerDirectionFor(reference);
+      if (
+        direction === LedgerDirection.Debit &&
+        wallet.balance.isLessThan(command.money)
+      ) {
+        // win e refund creditam; só o débito pode deixar o saldo negativo
+        return this.reject(
+          tx,
+          transaction,
+          wallet,
+          transaction.kind === WagerTransactionKind.Bet
+            ? 'INSUFFICIENT_BALANCE'
+            : 'REVERSAL_WOULD_GO_NEGATIVE',
+          command,
+        );
+      }
+
+      const entry =
+        direction === LedgerDirection.Debit
+          ? wallet.debit(
+              command.money,
+              transaction.id,
+              this.ids.next(),
+              command.at,
+            )
+          : wallet.credit(
+              command.money,
+              transaction.id,
+              this.ids.next(),
+              command.at,
+            );
       transaction.markProcessed({
+        referenceTransactionId: reference?.id,
         resultBalance: wallet.balance,
         at: command.at,
       });
-
       await tx.save({
         transaction,
         wallet,
@@ -197,6 +301,40 @@ export class ProcessWager {
       };
     });
   }
+
+  private async reject(
+    tx: WagerTx,
+    transaction: WagerTransaction,
+    wallet: Wallet,
+    code: FailureCode,
+    command: ProcessWagerCommand,
+  ): Promise<WagerResult> {
+    transaction.reject(code, command.at);
+    await tx.save({
+      transaction,
+      wallet,
+      events: [
+        WagerTransactionRejected.create({
+          eventId: this.ids.next(),
+          walletId: wallet.id,
+          correlationId: transaction.id,
+          occurredAt: command.at,
+          transactionId: transaction.id,
+          playerId: command.playerId,
+          kind: transaction.kind,
+          failureCode: code,
+        }),
+      ],
+    });
+
+    return {
+      transactionId: transaction.id,
+      status: transaction.status,
+      balance: wallet.balance,
+      idempotentReplay: false,
+      failureCode: code,
+    };
+  }
 }
 
 function hashWager(command: ProcessWagerCommand): string {
@@ -209,6 +347,9 @@ function hashWager(command: ProcessWagerCommand): string {
     kind: command.kind,
     playerId: command.playerId,
     providerId: command.providerId,
+    // vazio na aposta: dois refunds de apostas diferentes não podem ter o mesmo hash
+    referenceExternalTransactionId:
+      command.referenceExternalTransactionId ?? '',
     roundId: command.roundId,
     walletId: command.walletId,
   });

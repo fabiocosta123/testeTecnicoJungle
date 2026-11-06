@@ -159,3 +159,18 @@ export class WagerTransactionRejected extends IntegrationEvent<WagerTransactionR
     });
   }
 }
+
+export interface WagerTransactionPendingReferenceData {
+  transactionId: string;
+  walletId: string;
+  referenceExternalTransactionId: string;
+}
+
+export class WagerTransactionPendingReference extends IntegrationEvent<WagerTransactionPendingReferenceData> {
+  readonly eventType = 'WagerTransactionPendingReference';
+  readonly version = 1;
+
+  constructor(props: IntegrationEventProps<WagerTransactionPendingReferenceData>) {
+    super(props);
+  }
+}

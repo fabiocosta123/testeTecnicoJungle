@@ -74,6 +74,41 @@ class PostgresWagerTx implements WagerTx {
     async findByIdempotencyKey(
         key: string,
     ): Promise<WagerTransaction | undefined> {
+        return this.findOne('idempotency_key = ?', [key]);
+    }
+
+    async findByExternalId(
+        providerId: string,
+        externalTransactionId: string,
+    ): Promise<WagerTransaction | undefined> {
+        return this.findOne(
+            'provider_id = ? and external_transaction_id = ?',
+            [providerId, externalTransactionId],
+        );
+    }
+
+    async findActiveReversal(
+        providerId: string,
+        referenceExternalTransactionId: string,
+    ): Promise<boolean> {
+        // rejeitada não ocupa a vaga: só pendente ou processada trava outro estorno
+        const rows = await this.em.execute<{ id: string }[]>(
+            `select id from wager_transactions
+       where provider_id = ?
+         and reference_external_transaction_id = ?
+         and kind in ('REFUND', 'ROLLBACK')
+         and status in ('PENDING', 'PENDING_REFERENCE', 'PROCESSED')
+       limit 1`,
+            [providerId, referenceExternalTransactionId],
+            'all',
+        );
+        return rows.length > 0;
+    }
+
+    private async findOne(
+        whereSql: string,
+        params: unknown[],
+    ): Promise<WagerTransaction | undefined> {
         const rows = await this.em.execute<WagerRow[]>(
             `select id, provider_id, external_transaction_id, idempotency_key, payload_hash,
        wallet_id, player_id, round_id, game_id, kind, amount::text as amount,
@@ -82,8 +117,8 @@ class PostgresWagerTx implements WagerTx {
        result_balance_amount::text as result_balance_amount,
        result_balance_currency, created_at, processed_at
     from wager_transactions
-    where idempotency_key = ?`,
-            [key],
+    where ${whereSql}`,
+            params,
             'all',
         );
         const row = rows[0];
@@ -142,9 +177,10 @@ class PostgresWagerTx implements WagerTx {
             `insert into wager_transactions (
          id, provider_id, external_transaction_id, idempotency_key, payload_hash,
          wallet_id, player_id, round_id, game_id, kind, amount, currency,
+         reference_external_transaction_id, reference_transaction_id,
          status, failure_code, result_balance_amount, result_balance_currency,
          created_at, processed_at
-       ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 saved.transaction.id,
                 saved.transaction.providerId,
@@ -158,6 +194,8 @@ class PostgresWagerTx implements WagerTx {
                 saved.transaction.kind,
                 amount.amount,
                 amount.currency,
+                saved.transaction.referenceExternalTransactionId ?? null,
+                saved.transaction.referenceTransactionId ?? null,
                 saved.transaction.status,
                 saved.transaction.failureCode ?? null,
                 result?.amount ?? null,
